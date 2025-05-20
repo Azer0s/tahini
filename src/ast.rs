@@ -21,16 +21,21 @@ pub enum VarType {
     IdentType(String),
     ArraySized(Box<VarType>, usize),
     ArrayUnsized(Box<VarType>),
+    GenericArraySized(String, usize),
+    GenericArrayUnsized(String),
     Ptr(Box<VarType>),
+    GenericPtr(String),
     Tuple(Vec<VarType>),
+    GenericTuple(Vec<String>, Vec<VarType>),
     Struct(Vec<(String, VarType)>),
     GenericStruct(Vec<String>, Vec<(String, VarType)>),
     Fn(Vec<VarType>, Box<VarType>),
     FnWithVarArgs(Vec<VarType>, Box<VarType>),
+    GenericFn(Vec<String>, Vec<VarType>, Box<VarType>),
+    GenericFnWithVarArgs(Vec<String>, Vec<VarType>, Box<VarType>),
 }
 
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Int(i64),
     Float(f64),
@@ -56,8 +61,7 @@ pub enum VarInstruction {
     Typed(VarType),
 }
 
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TopLevelStatement {
     TypeAlias(String, VarType),
     DefVar(String, VarInstruction),

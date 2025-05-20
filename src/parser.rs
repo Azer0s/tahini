@@ -1,10 +1,9 @@
+use crate::ast::{Literal, TopLevelStatement, VarInstruction, VarType};
 use chumsky::prelude::*;
 use chumsky::text::ident;
-use crate::ast::{VarType, Literal, VarInstruction, TopLevelStatement};
 
 pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
-    let int = text::int(10)
-        .map(|s: &str| Literal::Int(s.parse().unwrap()));
+    let int = text::int(10).map(|s: &str| Literal::Int(s.parse().unwrap()));
 
     let float = text::int(10)
         .then_ignore(just("."))
@@ -15,10 +14,11 @@ pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
         });
 
     let atom = just(":")
-        .ignore_then(text::unicode::ident())
+        .ignore_then(ident())
         .map(|s: &'a str| Literal::Atom(s.to_string()));
 
-    let bool = just("true").or(just("false"))
+    let bool = just("true")
+        .or(just("false"))
         .map(|s: &str| Literal::Bool(s == "true"));
 
     let char = just("'")
@@ -53,8 +53,19 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             just("f64").to(VarType::Float64),
             just("f128").to(VarType::Float128),
             just("bool").to(VarType::Bool),
-            just("void").to(VarType::Void)
+            just("void").to(VarType::Void),
         ));
+
+        let generics = just("<")
+            .ignore_then(
+                ident()
+                    .padded()
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<&'a str>>()
+                    .map(|s| s.clone()),
+            )
+            .then_ignore(just(">"));
 
         // Array
         let array_sized = just("[")
@@ -72,8 +83,37 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             .padded()
             .ignore_then(var_type_rec.clone().padded())
             .then_ignore(just("]"))
-            .map(|var_type| {
-                VarType::ArrayUnsized(Box::from(var_type))
+            .map(|var_type| VarType::ArrayUnsized(Box::from(var_type)));
+
+        let array_long_form = just("(")
+            .padded()
+            .ignore_then(just("array"))
+            .ignore_then(var_type_rec.clone().padded())
+            .then(text::int(10).padded().or_not())
+            .then_ignore(just(")"))
+            .map(|(var_type, size): (VarType, Option<&'a str>)| match size {
+                Some(size) => VarType::ArraySized(Box::from(var_type), size.parse().unwrap()),
+                None => VarType::ArrayUnsized(Box::from(var_type)),
+            });
+
+        let generic_array_long_form = just("(")
+            .padded()
+            .ignore_then(just("array"))
+            .ignore_then(generics.padded())
+            .then(text::int(10).padded().or_not())
+            .then_ignore(just(")"))
+            .map(|(generic_types, size): (Vec<&'a str>, Option<&'a str>)| {
+                if generic_types.len() != 1 {
+                    panic!("Generic array must have exactly one type parameter");
+                }
+
+                match size {
+                    Some(size) => VarType::GenericArraySized(
+                        generic_types[0].to_string(),
+                        size.parse().unwrap(),
+                    ),
+                    None => VarType::GenericArrayUnsized(generic_types[0].to_string()),
+                }
             });
 
         // Pointer
@@ -84,40 +124,85 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             .then_ignore(just(")"))
             .map(|var_type| VarType::Ptr(Box::from(var_type)));
 
+        // Generic pointer
+        let generic_ptr = just("(")
+            .padded()
+            .ignore_then(just("ptr").padded())
+            .ignore_then(generics.padded())
+            .then_ignore(just(")"))
+            .map(|generic_types| {
+                if generic_types.len() != 1 {
+                    panic!("Pointer generics must have exactly one type parameter");
+                }
+
+                VarType::GenericPtr(generic_types[0].to_string())
+            });
+
         // Tuple
         let tuple_shorthand = just("{")
             .padded()
-            .ignore_then(var_type_rec.clone().padded().repeated().at_least(1).collect::<Vec<_>>())
+            .ignore_then(
+                var_type_rec
+                    .clone()
+                    .padded()
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
             .then_ignore(just("}"))
             .map(VarType::Tuple);
 
         let tuple_longform = just("(")
             .padded()
             .ignore_then(just("tuple").padded())
-            .ignore_then(var_type_rec.clone().padded().repeated().at_least(1).collect::<Vec<_>>())
+            .ignore_then(generics.or_not())
+            .then(
+                var_type_rec
+                    .clone()
+                    .padded()
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
             .then_ignore(just(")"))
-            .map(VarType::Tuple);
+            .map(|(generic_types, types)| {
+                if let Some(generics) = generic_types {
+                    VarType::GenericTuple(generics.iter().map(|s| s.to_string()).collect(), types)
+                } else {
+                    VarType::Tuple(types)
+                }
+            });
 
         let tuple = tuple_shorthand.or(tuple_longform);
 
         // Function
         let fn_type = just("fn")
             .padded()
-            .ignore_then(
+            .ignore_then(generics.or_not())
+            .then(
                 just("[")
-                .padded()
-                .ignore_then(var_type_rec.clone().padded().repeated().collect::<Vec<_>>())
+                    .padded()
+                    .ignore_then(var_type_rec.clone().padded().repeated().collect::<Vec<_>>())
                     .then(just("...").padded().or_not().map(|va| va.is_some()))
-                .then_ignore(just("]").padded())
+                    .then_ignore(just("]").padded()),
             )
             .then(var_type_rec.clone())
-            .map(|((args, is_va), ret)| {
-                if is_va {
-                    VarType::FnWithVarArgs(args, Box::new(ret))
-                } else {
-                    VarType::Fn(args, Box::new(ret))
-                }
-            });
+            .map(
+                |((generic_types, (args, is_va)), ret)| match (generic_types, is_va) {
+                    (Some(generics), true) => VarType::GenericFnWithVarArgs(
+                        generics.iter().map(|s| s.to_string()).collect(),
+                        args,
+                        Box::new(ret),
+                    ),
+                    (None, true) => VarType::FnWithVarArgs(args, Box::new(ret)),
+                    (Some(generics), false) => VarType::GenericFn(
+                        generics.iter().map(|s| s.to_string()).collect(),
+                        args,
+                        Box::new(ret),
+                    ),
+                    (None, false) => VarType::Fn(args, Box::new(ret)),
+                },
+            );
 
         // Struct
         let struct_field = just("(")
@@ -126,70 +211,56 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             .ignore_then(ident())
             .then(var_type_rec.clone().padded())
             .then_ignore(just(")"))
-            .map(|(name, var_type): (&'a str, VarType)| {
-                (name.to_string(), var_type)
-            });
+            .map(|(name, var_type): (&'a str, VarType)| (name.to_string(), var_type));
 
-        // Generic struct parser
-        let generic_struct = just("(")
+        // Struct parser
+        let struct_parser = just("(")
             .padded()
             .ignore_then(just("struct").padded())
-            .ignore_then(
-                just("<")
-                .then(
-                    text::ident()
+            .ignore_then(generics.or_not())
+            .then(
+                struct_field
+                    .clone()
                     .padded()
-                    .separated_by(just(" "))
+                    .repeated()
                     .at_least(1)
-                    .collect::<Vec<_>>()
-                )
-                .then_ignore(just(">"))
+                    .collect::<Vec<_>>(),
             )
-            .then(struct_field.clone().padded().repeated().at_least(1).collect::<Vec<_>>())
             .then_ignore(just(")"))
-            .map(|((_, generic_types), fields): ((_, Vec<&'a str>), Vec<(String, VarType)>)| {
-                let mut field_names = std::collections::HashSet::new();
-                for (name, _) in &fields {
-                    if !field_names.insert(name.clone()) {
-                        panic!("Duplicate field name: {}", name);
+            .map(
+                |(generic_types, fields): (Option<Vec<&'a str>>, Vec<(String, VarType)>)| {
+                    let mut field_names = std::collections::HashSet::new();
+                    for (name, _) in &fields {
+                        if !field_names.insert(name.clone()) {
+                            panic!("Duplicate field name: {}", name);
+                        }
                     }
-                }
-                
-                VarType::GenericStruct(
-                    generic_types.into_iter().map(|s| s.to_string()).collect(),
-                    fields
-                )
-            });
 
-        // Regular struct parser
-        let regular_struct = just("(")
-            .padded()
-            .ignore_then(just("struct").padded())
-            .ignore_then(struct_field.clone().padded().repeated().at_least(1).collect::<Vec<_>>())
-            .then_ignore(just(")"))
-            .map(|fields: Vec<(String, VarType)>| {
-                let mut field_names = std::collections::HashSet::new();
-                for (name, _) in &fields {
-                    if !field_names.insert(name.clone()) {
-                        panic!("Duplicate field name: {}", name);
+                    if let Some(generics) = generic_types {
+                        VarType::GenericStruct(
+                            generics.iter().map(|s| s.to_string()).collect(),
+                            fields,
+                        )
+                    } else {
+                        VarType::Struct(fields)
                     }
-                }
-                
-                VarType::Struct(fields)
-            });
-
-        let struct_parser = generic_struct.or(regular_struct);
+                },
+            );
 
         choice((
             basic_type,
             array_sized,
             array_unsized,
+            array_long_form,
+            generic_array_long_form,
             ptr,
+            generic_ptr,
             tuple,
             fn_type,
             struct_parser,
-            ident().map(|s: &'a str| VarType::IdentType(s.to_string()))
-        )).padded()
+            ident().map(|s: &'a str| VarType::IdentType(s.to_string())),
+        ))
+        .padded()
     })
 }
 
@@ -202,13 +273,15 @@ fn var_instruction<'a>() -> impl Parser<'a, &'a str, VarInstruction> + Clone {
 
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<TopLevelStatement>> {
     let ident = ident().padded();
-    
+
     let use_statement = just("(")
         .ignore_then(just("use").padded())
         .ignore_then(just(":header").padded().or_not().map(|o| o.is_some()))
-        .then(just("\"")
-            .ignore_then(none_of("\"").repeated().collect::<String>())
-            .then_ignore(just("\"")))
+        .then(
+            just("\"")
+                .ignore_then(none_of("\"").repeated().collect::<String>())
+                .then_ignore(just("\"")),
+        )
         .then_ignore(just(")"));
 
     let def_use = just("(")
@@ -223,7 +296,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<TopLevelStatement>> {
                 TopLevelStatement::Use(name.to_string(), import)
             }
         });
-    
+
     let def_var = just("(")
         .ignore_then(just("def").padded())
         .ignore_then(ident)
@@ -232,7 +305,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<TopLevelStatement>> {
         .map(|(name, var_instruction): (&'a str, VarInstruction)| {
             TopLevelStatement::DefVar(name.to_string(), var_instruction)
         });
-    
+
     let def = def_var.or(def_use);
 
     let type_alias = just("(")
