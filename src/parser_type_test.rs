@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn test_type_array() {
-        let input = "[i32, 10]";
+        let input = "[i32 10]";
         let result = var_type().parse(input).into_output().unwrap();
         assert_eq!(result, VarType::ArraySized(Box::new(VarType::Int32), 10));
     }
@@ -282,5 +282,34 @@ mod tests {
         let input = "(ptr<T>)";
         let result = var_type().parse(input).unwrap();
         assert_eq!(result, VarType::GenericPtr("T".to_string()));
+    }
+
+    #[test]
+    fn test_type_data() {
+        let input = "(data [:a i32] [:b f64])";
+        let result = var_type().parse(input).unwrap();
+        assert_eq!(
+            result,
+            VarType::Data(vec![
+                ("a".to_string(), vec![VarType::Int32]),
+                ("b".to_string(), vec![VarType::Float64]),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_type_generic_data() {
+        let input = "(data<T> [:a i32] [:b f64])";
+        let result = var_type().parse(input).unwrap();
+        assert_eq!(
+            result,
+            VarType::GenericData(
+                vec!["T".to_string()],
+                vec![
+                    ("a".to_string(), vec![VarType::Int32]),
+                    ("b".to_string(), vec![VarType::Float64])
+                ]
+            )
+        )
     }
 }

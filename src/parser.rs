@@ -71,7 +71,6 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
         let array_sized = just("[")
             .padded()
             .ignore_then(var_type_rec.clone().padded())
-            .then_ignore(just(",").padded())
             .then(text::int(10).padded())
             .then_ignore(just("]"))
             .map(|(var_type, size): (VarType, &str)| {
@@ -204,10 +203,59 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
                 },
             );
 
+        // Data
+        let data_field = just("[")
+            .padded()
+            .ignore_then(just(":"))
+            .ignore_then(ident())
+            .then(var_type_rec.clone().padded().repeated().collect::<Vec<_>>())
+            .then_ignore(just("]"));
+
+        type DataParseType<'a> = (Option<Vec<&'a str>>, Vec<(&'a str, Vec<VarType>)>);
+
+        let data = just("(")
+            .padded()
+            .ignore_then(just("data").padded())
+            .ignore_then(generics.or_not())
+            .then(
+                data_field
+                    .clone()
+                    .padded()
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(")"))
+            .map(|(generic_types, fields): DataParseType<'a>| {
+                let mut field_names = std::collections::HashSet::new();
+                for (name, _) in &fields {
+                    if !field_names.insert(name.to_string()) {
+                        panic!("Duplicate field name: {}", name);
+                    }
+                }
+
+                if let Some(generics) = generic_types {
+                    VarType::GenericData(
+                        generics.iter().map(|s| s.to_string()).collect(),
+                        fields
+                            .into_iter()
+                            .map(|(name, types)| (name.to_string(), types))
+                            .collect(),
+                    )
+                } else {
+                    VarType::Data(
+                        fields
+                            .into_iter()
+                            .map(|(name, types)| (name.to_string(), types))
+                            .collect(),
+                    )
+                }
+            });
+
         // Struct
         let struct_field = just("(")
             .padded()
-            .ignore_then(just(":").padded())
+            .ignore_then(just(":"))
             .ignore_then(ident())
             .then(var_type_rec.clone().padded())
             .then_ignore(just(")"))
@@ -253,6 +301,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             array_unsized,
             array_long_form,
             generic_array_long_form,
+            data,
             ptr,
             generic_ptr,
             tuple,

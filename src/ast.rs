@@ -23,6 +23,8 @@ pub enum VarType {
     ArrayUnsized(Box<VarType>),
     GenericArraySized(String, usize),
     GenericArrayUnsized(String),
+    Data(Vec<(String, Vec<VarType>)>),
+    GenericData(Vec<String>, Vec<(String, Vec<VarType>)>),
     Ptr(Box<VarType>),
     GenericPtr(String),
     Tuple(Vec<VarType>),
