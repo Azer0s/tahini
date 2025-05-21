@@ -1,5 +1,21 @@
 use std::hash::Hash;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DefVar<T>
+where
+    T: Clone,
+{
+    pub name: String,
+    pub instruction: T,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Statement {
+    DoBlock(Vec<Statement>),
+    Call(String, Vec<Statement>),
+    Ident(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum VarType {
     Int8,
@@ -48,25 +64,21 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Instruction {
+pub enum VarInstruction {
     Literal(Literal),
-    Var(String),
-    Call(String, Vec<Instruction>),
-    If(Box<Instruction>, Box<Instruction>, Option<Box<Instruction>>),
-    For(String, Box<Instruction>, Box<Instruction>),
+    Typed(VarType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum VarInstruction {
+pub enum TopLevelVarInstruction {
     Literal(Literal),
-    TypedInit(VarType, Box<Instruction>),
     Typed(VarType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TopLevelStatement {
     TypeAlias(String, VarType),
-    DefVar(String, VarInstruction),
+    TopLevelVar(DefVar<TopLevelVarInstruction>),
     Use(String, String),
     UseHeader(String, String),
 }

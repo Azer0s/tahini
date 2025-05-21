@@ -1,4 +1,6 @@
-use crate::ast::{Literal, TopLevelStatement, VarInstruction, VarType};
+use crate::ast::{
+    DefVar, Literal, Statement, TopLevelStatement, TopLevelVarInstruction, VarInstruction, VarType,
+};
 use chumsky::prelude::*;
 use chumsky::text::ident;
 
@@ -313,11 +315,43 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
     })
 }
 
+fn top_level_var_instruction<'a>() -> impl Parser<'a, &'a str, TopLevelVarInstruction> + Clone {
+    let literal = literal().map(TopLevelVarInstruction::Literal);
+    let typed = var_type().map(TopLevelVarInstruction::Typed);
+
+    literal.or(typed)
+}
+
 fn var_instruction<'a>() -> impl Parser<'a, &'a str, VarInstruction> + Clone {
     let literal = literal().map(VarInstruction::Literal);
     let typed = var_type().map(VarInstruction::Typed);
 
     literal.or(typed)
+}
+
+fn def_statement<'a, T>(
+    inner: impl Parser<'a, &'a str, T> + Clone,
+) -> impl Parser<'a, &'a str, DefVar<T>> + Clone
+where
+    T: Clone,
+{
+    let ident = ident().padded();
+
+    just("(")
+        .ignore_then(just("def").padded())
+        .ignore_then(ident)
+        .then(inner)
+        .then_ignore(just(")"))
+        .map(|(name, instruction): (&'a str, T)| -> DefVar<T> {
+            DefVar {
+                name: name.to_string(),
+                instruction,
+            }
+        })
+}
+
+fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
+    todo()
 }
 
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<TopLevelStatement>> {
@@ -346,14 +380,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<TopLevelStatement>> {
             }
         });
 
-    let def_var = just("(")
-        .ignore_then(just("def").padded())
-        .ignore_then(ident)
-        .then(var_instruction())
-        .then_ignore(just(")"))
-        .map(|(name, var_instruction): (&'a str, VarInstruction)| {
-            TopLevelStatement::DefVar(name.to_string(), var_instruction)
-        });
+    let def_var = def_statement(top_level_var_instruction()).map(TopLevelStatement::TopLevelVar);
 
     let def = def_var.or(def_use);
 
