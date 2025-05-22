@@ -1,4 +1,9 @@
-use std::hash::Hash;
+#[derive(Clone, Debug, PartialEq)]
+pub struct FnDef {
+    pub parameters: Vec<(String, VarType)>,
+    pub return_type: VarType,
+    pub statement: Statement,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DefVar<T>
@@ -9,14 +14,21 @@ where
     pub instruction: T,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     DoBlock(Vec<Statement>),
-    Call(String, Vec<Statement>),
+    Call(String, Vec<Args>),
+    DefVar(DefVar<Box<VarInstruction>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Args {
+    Statement(Statement),
+    Literal(Literal),
     Ident(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VarType {
     Int8,
     Int16,
@@ -67,18 +79,20 @@ pub enum Literal {
 pub enum VarInstruction {
     Literal(Literal),
     Typed(VarType),
+    Statement(Statement),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TopLevelVarInstruction {
+pub enum TopLevelDef {
     Literal(Literal),
     Typed(VarType),
+    FnDef(FnDef),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TopLevelStatement {
     TypeAlias(String, VarType),
-    TopLevelVar(DefVar<TopLevelVarInstruction>),
+    TopLevelDef(DefVar<TopLevelDef>),
     Use(String, String),
     UseHeader(String, String),
 }

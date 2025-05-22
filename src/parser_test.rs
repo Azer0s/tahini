@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::ast::{DefVar, Literal, TopLevelStatement, TopLevelVarInstruction, VarType};
+    use crate::ast::{DefVar, Literal, TopLevelDef, TopLevelStatement, VarType};
     use crate::parser::parser;
     use chumsky::Parser;
 
@@ -15,16 +15,16 @@ mod tests {
 
         assert_eq!(
             result[0],
-            TopLevelStatement::TopLevelVar(DefVar {
+            TopLevelStatement::TopLevelDef(DefVar {
                 name: "a".to_string(),
-                instruction: TopLevelVarInstruction::Literal(Literal::Int(10))
+                instruction: TopLevelDef::Literal(Literal::Int(10))
             })
         );
         assert_eq!(
             result[1],
-            TopLevelStatement::TopLevelVar(DefVar {
+            TopLevelStatement::TopLevelDef(DefVar {
                 name: "b".to_string(),
-                instruction: TopLevelVarInstruction::Typed(VarType::Ptr(Box::new(VarType::Int32)))
+                instruction: TopLevelDef::Typed(VarType::Ptr(Box::new(VarType::Int32)))
             })
         );
         assert_eq!(
@@ -53,5 +53,24 @@ mod tests {
             result[1],
             TopLevelStatement::Use("my_module".to_string(), "my_module".to_string())
         );
+    }
+
+    #[test]
+    fn test_parse_top_level_function_def() {
+        let input = "(def main (fn [] i32 (do \n
+            (def a 10)\n
+        )))";
+
+        let result = parser().parse(input).into_output().unwrap();
+
+        println!("{:?}", result);
+
+        let input = "(def main (fn [] i32 (do \n
+            (printf \"Hello\") \n
+            (printf \", world\n\")\
+        )))";
+
+        let result = parser().parse(input).into_output().unwrap();
+        println!("{:?}", result);
     }
 }
