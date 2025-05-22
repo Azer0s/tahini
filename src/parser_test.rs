@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::ast::{DefVar, Literal, TopLevelDef, TopLevelStatement, VarType};
+    use crate::ast::{DefVar, Literal, Statement, TopLevelDef, TopLevelStatement, VarType};
     use crate::parser::parser;
     use chumsky::Parser;
 
@@ -56,21 +56,113 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_top_level_function_def() {
+    fn test_parse_top_level_function_def_1() {
         let input = "(def main (fn [] i32 (do \n
             (def a 10)\n
         )))";
 
         let result = parser().parse(input).into_output().unwrap();
+        assert_eq!(result.len(), 1);
 
-        println!("{:?}", result);
+        if let TopLevelStatement::TopLevelDef(df) = &result[0] {
+            if let TopLevelDef::FnDef(f) = &df.instruction {
+                assert_eq!(f.return_type, VarType::Int32);
+                assert_eq!(f.parameters.len(), 0);
+                assert_eq!(
+                    f.statement,
+                    Statement::DoBlock(vec![Statement::DefVar(DefVar {
+                        name: "a".to_string(),
+                        instruction: Box::new(Statement::Literal(Literal::Int(10))),
+                    })])
+                );
+            }
+        }
+    }
 
+    #[test]
+    fn test_parse_top_level_function_def_2() {
         let input = "(def main (fn [] i32 (do \n
             (printf \"Hello\") \n
             (printf \", world\n\")\
         )))";
 
         let result = parser().parse(input).into_output().unwrap();
-        println!("{:?}", result);
+        assert_eq!(result.len(), 1);
+
+        if let TopLevelStatement::TopLevelDef(df) = &result[0] {
+            if let TopLevelDef::FnDef(f) = &df.instruction {
+                assert_eq!(f.return_type, VarType::Int32);
+                assert_eq!(f.parameters.len(), 0);
+                assert_eq!(
+                    f.statement,
+                    Statement::DoBlock(vec![
+                        Statement::Call(
+                            "printf".to_string(),
+                            vec![Statement::Literal(Literal::String("Hello".to_string()))],
+                        ),
+                        Statement::Call(
+                            "printf".to_string(),
+                            vec![Statement::Literal(Literal::String(", world\n".to_string()))],
+                        ),
+                    ])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_top_level_function_def_3() {
+        let input = "(def fib (fn [(:n i32)] i32 \n
+            (if (< n 2) \n
+                n \n\
+                (+ (fib (- n 1)) (fib (- n 2)))) \n
+            ))";
+        let result = parser().parse(input).into_output().unwrap();
+        assert_eq!(result.len(), 1);
+        if let TopLevelStatement::TopLevelDef(df) = &result[0] {
+            if let TopLevelDef::FnDef(f) = &df.instruction {
+                assert_eq!(f.return_type, VarType::Int32);
+                assert_eq!(f.parameters.len(), 1);
+                assert_eq!(f.parameters[0], ("n".to_string(), VarType::Int32));
+                assert_eq!(
+                    f.statement,
+                    Statement::IfElse(
+                        Box::new(Statement::Call(
+                            "<".to_string(),
+                            vec![
+                                Statement::Ident("n".to_string()),
+                                Statement::Literal(Literal::Int(2))
+                            ],
+                        )),
+                        Box::new(Statement::Ident("n".to_string())),
+                        Box::new(Statement::Call(
+                            "+".to_string(),
+                            vec![
+                                Statement::Call(
+                                    "fib".to_string(),
+                                    vec![Statement::Call(
+                                        "-".to_string(),
+                                        vec![
+                                            Statement::Ident("n".to_string()),
+                                            Statement::Literal(Literal::Int(1))
+                                        ],
+                                    )],
+                                ),
+                                Statement::Call(
+                                    "fib".to_string(),
+                                    vec![Statement::Call(
+                                        "-".to_string(),
+                                        vec![
+                                            Statement::Ident("n".to_string()),
+                                            Statement::Literal(Literal::Int(2))
+                                        ],
+                                    )],
+                                ),
+                            ],
+                        )),
+                    )
+                );
+            }
+        }
     }
 }

@@ -1,7 +1,4 @@
-use crate::ast::{
-    Args, DefVar, FnDef, Literal, Statement, TopLevelDef, TopLevelStatement, VarInstruction,
-    VarType,
-};
+use crate::ast::{DefVar, FnDef, Literal, Statement, TopLevelDef, TopLevelStatement, VarType};
 use chumsky::prelude::*;
 
 fn ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
@@ -46,6 +43,13 @@ pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
     float.or(int).or(bool).or(atom).or(char).or(string)
 }
 
+fn generics<'a>() -> impl Parser<'a, &'a str, Vec<String>> + Clone {
+    just("<")
+        .ignore_then(ident().padded().repeated().at_least(1).collect::<Vec<_>>())
+        .then_ignore(just(">"))
+        .padded()
+}
+
 pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
     recursive(|var_type_rec| {
         // Basic types
@@ -67,10 +71,6 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             just("bool").to(VarType::Bool),
             just("void").to(VarType::Void),
         ));
-
-        let generics = just("<")
-            .ignore_then(ident().padded().repeated().at_least(1).collect::<Vec<_>>())
-            .then_ignore(just(">"));
 
         // Array
         let array_sized = just("[")
@@ -100,7 +100,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             });
 
         let generic_array_long_form = array_start
-            .ignore_then(generics.clone().padded())
+            .ignore_then(generics())
             .then(text::int(10).padded().or_not())
             .then_ignore(just(")"))
             .map(|(generic_types, size): (Vec<String>, Option<&'a str>)| {
@@ -129,7 +129,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
         let generic_ptr = just("(")
             .padded()
             .ignore_then(just("ptr").padded())
-            .ignore_then(generics.clone().padded())
+            .ignore_then(generics())
             .then_ignore(just(")"))
             .map(|generic_types| {
                 if generic_types.len() != 1 {
@@ -156,7 +156,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
         let tuple_longform = just("(")
             .padded()
             .ignore_then(just("tuple").padded())
-            .ignore_then(generics.clone().or_not())
+            .ignore_then(generics().or_not())
             .then(
                 var_type_rec
                     .clone()
@@ -179,7 +179,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
         // Function
         let fn_type = just("fn")
             .padded()
-            .ignore_then(generics.clone().or_not())
+            .ignore_then(generics().or_not())
             .then(
                 just("[")
                     .padded()
@@ -218,7 +218,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
         let data = just("(")
             .padded()
             .ignore_then(just("data").padded())
-            .ignore_then(generics.clone().or_not())
+            .ignore_then(generics().or_not())
             .then(
                 data_field
                     .clone()
@@ -267,7 +267,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
         let struct_parser = just("(")
             .padded()
             .ignore_then(just("struct").padded())
-            .ignore_then(generics.or_not())
+            .ignore_then(generics().or_not())
             .then(
                 struct_field
                     .clone()
@@ -352,22 +352,25 @@ fn function_parameters<'a>() -> impl Parser<'a, &'a str, (String, VarType)> + Cl
 }
 
 fn function_statement<'a>() -> impl Parser<'a, &'a str, FnDef> + Clone {
+    type FnParseResult = (
+        ((Option<Vec<String>>, Vec<(String, VarType)>), VarType),
+        Statement,
+    );
+
     just("(")
         .padded()
         .ignore_then(just("fn").padded())
-        .ignore_then(just("[").padded())
-        .ignore_then(function_parameters().repeated().collect::<Vec<_>>())
+        .ignore_then(generics().or_not())
+        .then_ignore(just("[").padded())
+        .then(function_parameters().repeated().collect::<Vec<_>>())
         .then_ignore(just("]"))
         .then(var_type())
         .then(statement())
         .then_ignore(just(")"))
         .map(
-            |((params, return_type), statement): (
-                (Vec<(String, VarType)>, VarType),
-                Statement,
-            )|
-             -> FnDef {
+            |(((generic_types, params), return_type), statement): FnParseResult| -> FnDef {
                 FnDef {
+                    generic_types,
                     parameters: params,
                     return_type,
                     statement,
@@ -376,62 +379,53 @@ fn function_statement<'a>() -> impl Parser<'a, &'a str, FnDef> + Clone {
         )
 }
 
-fn args<'a>(
-    inner: impl Parser<'a, &'a str, Statement> + Clone,
-) -> impl Parser<'a, &'a str, Args> + Clone {
-    let literal = literal().map(Args::Literal);
-    let ident = ident().map(Args::Ident);
-    let inner = inner.clone().map(Args::Statement);
-
-    choice((literal, ident, inner))
-}
-
 fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
     recursive(|statement| {
-        let statement_without_def_var = recursive(|statement_without_def_var| {
-            // Do block
-            let do_block = just("(")
-                .padded()
-                .ignore_then(just("do").padded())
-                .ignore_then(
-                    statement
-                        .clone()
-                        .padded()
-                        .repeated()
-                        .at_least(1)
-                        .collect::<Vec<_>>(),
-                )
-                .then_ignore(just(")"))
-                .map(Statement::DoBlock);
+        // Do block
+        let do_block = just("(")
+            .padded()
+            .ignore_then(just("do").padded())
+            .ignore_then(
+                statement
+                    .clone()
+                    .padded()
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(")"))
+            .map(Statement::DoBlock);
 
-            // Call
-            let call = just("(")
-                .padded()
-                .ignore_then(ident())
-                .then(
-                    args(statement_without_def_var.clone())
-                        .padded()
-                        .repeated()
-                        .collect::<Vec<_>>(),
-                )
-                .then_ignore(just(")"))
-                .map(|(name, args)| Statement::Call(name, args));
+        // Call
+        let call = just("(")
+            .padded()
+            .ignore_then(ident())
+            .then(statement.clone().padded().repeated().collect::<Vec<_>>())
+            .then_ignore(just(")"))
+            .map(|(name, args)| Statement::Call(name, args));
 
-            choice((do_block, call))
-        });
+        // If statement
+        let if_statement = just("(")
+            .padded()
+            .ignore_then(just("if").padded())
+            .ignore_then(statement.clone().padded())
+            .then(statement.clone().padded())
+            .then(statement.clone().padded().or_not())
+            .map(|((condition, if_block), else_block)| match else_block {
+                None => Statement::If(Box::new(condition), Box::new(if_block)),
+                Some(else_block) => Statement::IfElse(
+                    Box::new(condition),
+                    Box::new(if_block),
+                    Box::new(else_block),
+                ),
+            });
 
-        let var_instruction = choice((
-            literal().map(VarInstruction::Literal),
-            var_type().map(VarInstruction::Typed),
-            statement_without_def_var
-                .clone()
-                .map(VarInstruction::Statement),
-        ))
-        .map(Box::new);
+        let literal = literal().map(Statement::Literal);
+        let ident = ident().map(Statement::Ident);
 
-        let def_var = def_statement(var_instruction).map(Statement::DefVar);
+        let def_var = def_statement(statement.clone()).map(|s| Statement::DefVar(s.boxed()));
 
-        choice((def_var, statement_without_def_var))
+        choice((do_block, if_statement, def_var, call, literal, ident))
     })
 }
 

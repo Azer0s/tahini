@@ -1,5 +1,6 @@
 #[derive(Clone, Debug, PartialEq)]
 pub struct FnDef {
+    pub generic_types: Option<Vec<String>>,
     pub parameters: Vec<(String, VarType)>,
     pub return_type: VarType,
     pub statement: Statement,
@@ -14,18 +15,27 @@ where
     pub instruction: T,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
-    DoBlock(Vec<Statement>),
-    Call(String, Vec<Args>),
-    DefVar(DefVar<Box<VarInstruction>>),
+impl<T> DefVar<T>
+where
+    T: Clone,
+{
+    pub fn boxed(self) -> DefVar<Box<T>> {
+        DefVar {
+            name: self.name,
+            instruction: Box::new(self.instruction),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Args {
-    Statement(Statement),
-    Literal(Literal),
+pub enum Statement {
     Ident(String),
+    Literal(Literal),
+    DoBlock(Vec<Statement>),
+    Call(String, Vec<Statement>),
+    DefVar(DefVar<Box<Statement>>),
+    If(Box<Statement>, Box<Statement>),
+    IfElse(Box<Statement>, Box<Statement>, Box<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,13 +83,6 @@ pub enum Literal {
     Char(char),
     String(String),
     Atom(String),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum VarInstruction {
-    Literal(Literal),
-    Typed(VarType),
-    Statement(Statement),
 }
 
 #[derive(Debug, Clone, PartialEq)]
