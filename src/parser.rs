@@ -2,15 +2,31 @@ use crate::ast::{DefVar, FnDef, Literal, Statement, TopLevelDef, TopLevelStateme
 use chumsky::prelude::*;
 
 fn ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
-    let keywords = ["def", "do", "use", "if", "for"];
+    let keywords = [
+        "def", "fn", "if", "do", "use", "array", "ptr", "data", "struct", "tuple", "...", "true",
+        "false",
+    ];
 
-    text::unicode::ident().map(move |s: &'a str| {
-        if keywords.contains(&s) {
-            panic!("\"{}\" is a reserved keyword", s);
-        }
-
-        s.to_string()
-    })
+    any()
+        .filter(|c: &char| {
+            !c.is_whitespace()
+                && *c != '('
+                && *c != ')'
+                && !c.is_numeric()
+                && *c != '['
+                && *c != ']'
+                && *c != '{'
+                && *c != '}'
+                && *c != ':'
+                && *c != ','
+                && *c != '"'
+                && *c != '\''
+        })
+        .filter(|c: &char| !c.is_whitespace())
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+        .filter(move |s: &String| !keywords.contains(&s.as_str()))
 }
 
 pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
@@ -301,11 +317,11 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
             basic_type,
             array_sized,
             array_unsized,
-            array_long_form,
             generic_array_long_form,
+            array_long_form,
             data,
-            ptr,
             generic_ptr,
+            ptr,
             tuple,
             fn_type,
             struct_parser,
@@ -379,18 +395,16 @@ fn function_statement<'a>() -> impl Parser<'a, &'a str, FnDef> + Clone {
         )
 }
 
-fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
-    recursive(|statement| {
-        // Do block
+pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
+    recursive(|statement_rec| {
         let do_block = just("(")
             .padded()
             .ignore_then(just("do").padded())
             .ignore_then(
-                statement
+                statement_rec
                     .clone()
                     .padded()
                     .repeated()
-                    .at_least(1)
                     .collect::<Vec<_>>(),
             )
             .then_ignore(just(")"))
@@ -399,8 +413,14 @@ fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
         // Call
         let call = just("(")
             .padded()
-            .ignore_then(ident())
-            .then(statement.clone().padded().repeated().collect::<Vec<_>>())
+            .ignore_then(ident().padded())
+            .then(
+                statement_rec
+                    .clone()
+                    .padded()
+                    .repeated()
+                    .collect::<Vec<_>>(),
+            )
             .then_ignore(just(")"))
             .map(|(name, args)| Statement::Call(name, args));
 
@@ -408,9 +428,10 @@ fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
         let if_statement = just("(")
             .padded()
             .ignore_then(just("if").padded())
-            .ignore_then(statement.clone().padded())
-            .then(statement.clone().padded())
-            .then(statement.clone().padded().or_not())
+            .ignore_then(statement_rec.clone().padded())
+            .then(statement_rec.clone().padded())
+            .then(statement_rec.clone().padded().or_not())
+            .then_ignore(just(")").padded())
             .map(|((condition, if_block), else_block)| match else_block {
                 None => Statement::If(Box::new(condition), Box::new(if_block)),
                 Some(else_block) => Statement::IfElse(
@@ -420,12 +441,17 @@ fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
                 ),
             });
 
-        let literal = literal().map(Statement::Literal);
-        let ident = ident().map(Statement::Ident);
+        let def = def_statement(statement_rec.clone()).map(|def| Statement::DefVar(def.boxed()));
 
-        let def_var = def_statement(statement.clone()).map(|s| Statement::DefVar(s.boxed()));
-
-        choice((do_block, if_statement, def_var, call, literal, ident))
+        choice((
+            if_statement,
+            do_block,
+            def,
+            call,
+            ident().map(Statement::Ident),
+            literal().map(Statement::Literal),
+        ))
+        .padded()
     })
 }
 
