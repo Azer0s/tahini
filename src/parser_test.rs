@@ -184,4 +184,65 @@ mod tests {
         let result = parser().parse(input).into_output().unwrap();
         println!("{:?}", result);
     }
+
+    #[test]
+    fn test_parse_top_level_function_def_5() {
+        let input = "(def main (fn [] i32 \n
+            (do \n
+                (def a 10) \n
+                (def b 20) \n
+                (if (< a b) \n
+                    (printf \"a is less than b\") \n
+                    (printf \"a is not less than b\") \n
+                ) \n
+            ) \n
+        )) \n
+        (export :all)";
+
+        let result = parser().parse(input).into_output().unwrap();
+        assert_eq!(result.len(), 2);
+
+        if let TopLevelStatement::TopLevelDef(df) = &result[0] {
+            if let TopLevelDef::FnDef(f) = &df.instruction {
+                assert_eq!(f.return_type, VarType::Int32);
+                assert_eq!(f.parameters.len(), 0);
+                assert_eq!(
+                    f.statement,
+                    Statement::DoBlock(vec![
+                        Statement::DefVar(DefVar {
+                            name: "a".to_string(),
+                            instruction: Box::new(Statement::Literal(Literal::Int(10))),
+                        }),
+                        Statement::DefVar(DefVar {
+                            name: "b".to_string(),
+                            instruction: Box::new(Statement::Literal(Literal::Int(20))),
+                        }),
+                        Statement::IfElse(
+                            Box::new(Statement::Call(
+                                "<".to_string(),
+                                vec![
+                                    Statement::Ident("a".to_string()),
+                                    Statement::Ident("b".to_string())
+                                ],
+                            )),
+                            Box::new(Statement::Call(
+                                "printf".to_string(),
+                                vec![Statement::Literal(Literal::String(
+                                    "a is less than b".to_string()
+                                ))],
+                            )),
+                            Box::new(Statement::Call(
+                                "printf".to_string(),
+                                vec![Statement::Literal(Literal::String(
+                                    "a is not less than b".to_string()
+                                ))],
+                            )),
+                        ),
+                    ])
+                );
+            }
+        }
+
+        assert_eq!(result[1], TopLevelStatement::ExportAll());
+    }
 }

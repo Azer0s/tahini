@@ -4,7 +4,7 @@ use chumsky::prelude::*;
 fn ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
     let keywords = [
         "def", "fn", "if", "do", "use", "array", "ptr", "data", "struct", "tuple", "...", "true",
-        "false", "range", "for", "return",
+        "false", "range", "for", "return", "export", "type",
     ];
 
     any()
@@ -528,7 +528,19 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<TopLevelStatement>> {
             TopLevelStatement::TypeAlias(name.to_string(), var_type)
         });
 
-    choice((def, type_alias))
+    let export_all = just("(")
+        .ignore_then(just("export").padded())
+        .ignore_then(just(":all").padded())
+        .then_ignore(just(")"))
+        .map(|_| TopLevelStatement::ExportAll());
+
+    let export = just("(")
+        .ignore_then(just("export").padded())
+        .ignore_then(ident().padded().repeated().collect::<Vec<_>>())
+        .then_ignore(just(")"))
+        .map(|names: Vec<String>| TopLevelStatement::Export(names));
+
+    choice((def, type_alias, export_all, export))
         .padded()
         .repeated()
         .collect::<Vec<_>>()

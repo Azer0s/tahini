@@ -164,22 +164,22 @@ Union types represent values that can be one of several types:
 `tahini` supports generic type definitions with type parameters:
 
 ```lisp
-(type pair<T1 T2> (struct
+(type pair (struct<T1 T2>
   (:first T1)
   (:second T2)
 ))
 
-(type option<T> (data
+(type option (data<T>
   [:some T]
   [:none]
 ))
 
-(type result<T E> (data
+(type result (data<T E>
   [:ok T]
   [:err E]
 ))
 
-(type vec<T> (struct
+(type vec (struct<T>
   (:data (ptr T))
   (:length i64)
   (:capacity i64)

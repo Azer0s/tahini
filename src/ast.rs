@@ -100,4 +100,6 @@ pub enum TopLevelStatement {
     TopLevelDef(DefVar<TopLevelDef>),
     Use(String, String),
     UseHeader(String, String),
+    ExportAll(),
+    Export(Vec<String>),
 }
