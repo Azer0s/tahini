@@ -286,4 +286,37 @@ mod tests {
             ]))
         );
     }
+
+    #[test]
+    fn test_parse_call() {
+        let input = "(< a b)";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::Call(
+                "<".to_string(),
+                vec![
+                    Statement::Ident("a".to_string()),
+                    Statement::Ident("b".to_string())
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_generic_call() {
+        let input = "(option<i8> :some 10)";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::GenericCall(
+                "option".to_string(),
+                vec!["i8".to_string()],
+                vec![
+                    Statement::Literal(Literal::Atom("some".to_string())),
+                    Statement::Literal(Literal::Int(10))
+                ]
+            )
+        );
+    }
 }

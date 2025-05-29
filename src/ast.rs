@@ -38,6 +38,7 @@ pub enum Statement {
     IfElse(Box<Statement>, Box<Statement>, Box<Statement>),
     For(Box<Statement>, Box<Statement>),
     ForRange(String, Box<Statement>, Box<Statement>),
+    GenericCall(String, Vec<String>, Vec<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

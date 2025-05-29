@@ -7,26 +7,31 @@ fn ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
         "false", "range", "for", "return", "export", "type",
     ];
 
-    any()
-        .filter(|c: &char| {
-            !c.is_whitespace()
-                && *c != '('
-                && *c != ')'
-                && !c.is_numeric()
-                && *c != '['
-                && *c != ']'
-                && *c != '{'
-                && *c != '}'
-                && *c != ':'
-                && *c != ','
-                && *c != '"'
-                && *c != '\''
-        })
-        .filter(|c: &char| !c.is_whitespace())
+    let forbidden_chars = [
+        '(', ')', '[', ']', '{', '}', ':', ',', '.', '<', '>', '"', '\'', ' ', '\t', '\n',
+    ];
+
+    let first = any()
+        .filter(move |c: &char| !forbidden_chars.contains(c) && !c.is_numeric())
+        .filter(|c: &char| !c.is_whitespace());
+
+    let rest = any()
+        .filter(move |c: &char| !forbidden_chars.contains(c))
+        .repeated()
+        .collect::<String>();
+
+    first
+        .then(rest)
+        .map(|(first_char, rest): (char, String)| format!("{}{}", first_char, rest))
+        .filter(move |s: &String| !keywords.contains(&s.as_str()))
+        .or(operator_ident())
+}
+
+fn operator_ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
+    one_of("+*/%&|^!=<>-")
         .repeated()
         .at_least(1)
         .collect::<String>()
-        .filter(move |s: &String| !keywords.contains(&s.as_str()))
 }
 
 pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
@@ -482,6 +487,21 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
             .then_ignore(just(")"))
             .map(|(name, args)| Statement::Call(name, args));
 
+        // Generic call
+        let generic_call = just("(")
+            .padded()
+            .ignore_then(ident().padded())
+            .then(generics())
+            .then(
+                statement_without_def
+                    .clone()
+                    .padded()
+                    .repeated()
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(")"))
+            .map(|((name, generics), args)| Statement::GenericCall(name, generics, args));
+
         // If statement
         let if_statement = just("(")
             .padded()
@@ -506,6 +526,7 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
             for_statement,
             do_block,
             def,
+            generic_call,
             call,
             ident().map(Statement::Ident),
             literal_with_statement(statement_rec).map(Statement::Literal),
