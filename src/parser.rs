@@ -4,7 +4,7 @@ use chumsky::prelude::*;
 fn ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
     let keywords = [
         "def", "fn", "if", "do", "use", "array", "ptr", "data", "struct", "tuple", "...", "true",
-        "false",
+        "false", "range", "for", "return",
     ];
 
     any()
@@ -61,7 +61,14 @@ pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
 
 fn generics<'a>() -> impl Parser<'a, &'a str, Vec<String>> + Clone {
     just("<")
-        .ignore_then(ident().padded().repeated().at_least(1).collect::<Vec<_>>())
+        .ignore_then(
+            text::unicode::ident()
+                .map(|s: &str| s.to_string())
+                .padded()
+                .repeated()
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
         .then_ignore(just(">"))
         .padded()
 }
@@ -397,6 +404,10 @@ fn function_statement<'a>() -> impl Parser<'a, &'a str, FnDef> + Clone {
 
 pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
     recursive(|statement_rec| {
+        let statement_without_def = statement_rec
+            .clone()
+            .filter(|s| !matches!(s, Statement::DefVar(_)));
+
         let do_block = just("(")
             .padded()
             .ignore_then(just("do").padded())
@@ -410,12 +421,36 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
             .then_ignore(just(")"))
             .map(Statement::DoBlock);
 
+        let for_statement = just("(")
+            .padded()
+            .ignore_then(just("for").padded())
+            .ignore_then(statement_without_def.clone())
+            .then(statement_rec.clone())
+            .then_ignore(just(")"))
+            .map(|(iter, block)| Statement::For(Box::new(iter), Box::new(block)));
+
+        let for_range_statement = just("(")
+            .padded()
+            .ignore_then(just("for").padded())
+            .ignore_then(just("(").padded())
+            .ignore_then(just("range").padded())
+            .ignore_then(ident().padded())
+            .then(statement_without_def.clone())
+            .then_ignore(just(")"))
+            .then(statement_rec.clone())
+            .then_ignore(just(")"))
+            .map(|((name, range), block)| {
+                Statement::ForRange(name, Box::new(range), Box::new(block))
+            });
+
+        let for_statement = for_statement.or(for_range_statement);
+
         // Call
         let call = just("(")
             .padded()
             .ignore_then(ident().padded())
             .then(
-                statement_rec
+                statement_without_def
                     .clone()
                     .padded()
                     .repeated()
@@ -428,9 +463,9 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
         let if_statement = just("(")
             .padded()
             .ignore_then(just("if").padded())
-            .ignore_then(statement_rec.clone().padded())
-            .then(statement_rec.clone().padded())
-            .then(statement_rec.clone().padded().or_not())
+            .ignore_then(statement_without_def.clone().padded())
+            .then(statement_without_def.clone().padded())
+            .then(statement_without_def.clone().padded().or_not())
             .then_ignore(just(")").padded())
             .map(|((condition, if_block), else_block)| match else_block {
                 None => Statement::If(Box::new(condition), Box::new(if_block)),
@@ -445,6 +480,7 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
 
         choice((
             if_statement,
+            for_statement,
             do_block,
             def,
             call,

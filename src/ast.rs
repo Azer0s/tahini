@@ -36,6 +36,8 @@ pub enum Statement {
     DefVar(DefVar<Box<Statement>>),
     If(Box<Statement>, Box<Statement>),
     IfElse(Box<Statement>, Box<Statement>, Box<Statement>),
+    For(Box<Statement>, Box<Statement>),
+    ForRange(String, Box<Statement>, Box<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

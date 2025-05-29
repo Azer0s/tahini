@@ -165,4 +165,23 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_parse_top_level_function_def_4() {
+        let input = "(def read-all (fn [] str \n
+          (do \n
+            (def result \"\") \n
+            (def c (stdio/getchar)) \n
+            (for (!= c (- 1)) \n
+              (do \n
+                (def result (str-append result (char-to-str c))) \n
+                (def c (stdio/getchar)) \n
+              ) \n
+            ) \n
+            result \n
+          ) \n
+        ))";
+        let result = parser().parse(input).into_output().unwrap();
+        println!("{:?}", result);
+    }
 }

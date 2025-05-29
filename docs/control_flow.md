@@ -79,7 +79,7 @@ Example:
   (do
     (def result "")
     (def c (stdio/getchar))
-    (for (!= c -1)
+    (for (!= c (- 1))
       (do
         (def result (str-append result (char-to-str c)))
         (def c (stdio/getchar))
