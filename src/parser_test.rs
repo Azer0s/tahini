@@ -319,4 +319,62 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn test_parse_dollar_operator() {
+        let input = "($ [0] a)";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::GetIndexed(
+                Box::new(Statement::Literal(Literal::Int(0))),
+                Box::new(Statement::Ident("a".to_string()))
+            )
+        );
+
+        let input = "($ [0] a b)";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::SetIndexed(
+                Box::new(Statement::Literal(Literal::Int(0))),
+                Box::new(Statement::Ident("a".to_string())),
+                Box::new(Statement::Ident("b".to_string()))
+            )
+        );
+
+        let input = "($ :x a)";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::GetField("x".to_string(), Box::new(Statement::Ident("a".to_string())))
+        );
+
+        let input = "($ :x a 4.2)";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::SetField(
+                "x".to_string(),
+                Box::new(Statement::Ident("a".to_string())),
+                Box::new(Statement::Literal(Literal::Float(4.2)))
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_nested_dollar_operator() {
+        let input = "($ :x ($ :y a))";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::GetField(
+                "x".to_string(),
+                Box::new(Statement::GetField(
+                    "y".to_string(),
+                    Box::new(Statement::Ident("a".to_string()))
+                )),
+            )
+        );
+    }
 }

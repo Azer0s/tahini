@@ -39,6 +39,12 @@ pub enum Statement {
     For(Box<Statement>, Box<Statement>),
     ForRange(String, Box<Statement>, Box<Statement>),
     GenericCall(String, Vec<String>, Vec<Statement>),
+
+    GetField(String, Box<Statement>),
+    GetIndexed(Box<Statement>, Box<Statement>),
+
+    SetField(String, Box<Statement>, Box<Statement>),
+    SetIndexed(Box<Statement>, Box<Statement>, Box<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

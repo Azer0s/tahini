@@ -8,7 +8,7 @@ fn ident<'a>() -> impl Parser<'a, &'a str, String> + Clone {
     ];
 
     let forbidden_chars = [
-        '(', ')', '[', ']', '{', '}', ':', ',', '.', '<', '>', '"', '\'', ' ', '\t', '\n',
+        '(', ')', '[', ']', '{', '}', ':', ',', '.', '<', '>', '"', '\'', ' ', '\t', '\n', '$',
     ];
 
     let first = any()
@@ -521,12 +521,46 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
 
         let def = def_statement(statement_rec.clone()).map(|def| Statement::DefVar(def.boxed()));
 
+        let dollar_operator_field = just("(")
+            .ignore_then(just("$").padded())
+            .ignore_then(just(":"))
+            .ignore_then(ident())
+            .then(statement_rec.clone().padded())
+            .then(statement_rec.clone().padded().or_not())
+            .then_ignore(just(")"))
+            .map(|((field, target), value)| {
+                if let Some(value) = value {
+                    Statement::SetField(field, Box::new(target), Box::new(value))
+                } else {
+                    Statement::GetField(field, Box::new(target))
+                }
+            });
+
+        let dollar_operator_indexed = just("(")
+            .ignore_then(just("$").padded())
+            .ignore_then(just("["))
+            .ignore_then(statement_rec.clone().padded())
+            .then_ignore(just("]"))
+            .then(statement_rec.clone().padded())
+            .then(statement_rec.clone().padded().or_not())
+            .then_ignore(just(")"))
+            .map(|((index, target), value)| {
+                if let Some(value) = value {
+                    Statement::SetIndexed(Box::new(index), Box::new(target), Box::new(value))
+                } else {
+                    Statement::GetIndexed(Box::new(index), Box::new(target))
+                }
+            });
+
+        let dollar_operator = dollar_operator_field.or(dollar_operator_indexed);
+
         choice((
             if_statement,
             for_statement,
             do_block,
             def,
             generic_call,
+            dollar_operator,
             call,
             ident().map(Statement::Ident),
             literal_with_statement(statement_rec).map(Statement::Literal),
