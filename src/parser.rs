@@ -84,7 +84,13 @@ pub fn literal_with_statement<'a>(
         .then_ignore(just("]"))
         .map(Literal::Array);
 
-    choice((literal(), tuple, data, array))
+    choice((
+        literal(),
+        tuple,
+        data,
+        array,
+        function_statement(inner).map(|f| Literal::Fn(Box::new(f))),
+    ))
 }
 
 fn generics<'a>() -> impl Parser<'a, &'a str, Vec<String>> + Clone {
@@ -369,7 +375,7 @@ pub fn var_type<'a>() -> impl Parser<'a, &'a str, VarType> + Clone {
 fn top_level_var_instruction<'a>() -> impl Parser<'a, &'a str, TopLevelDef> + Clone {
     let literal = literal().map(TopLevelDef::Literal);
     let typed = var_type().map(TopLevelDef::Typed);
-    let function = function_statement().map(TopLevelDef::FnDef);
+    let function = function_statement(statement()).map(TopLevelDef::FnDef);
 
     choice((literal, typed, function))
 }
@@ -402,7 +408,9 @@ fn function_parameters<'a>() -> impl Parser<'a, &'a str, (String, VarType)> + Cl
         .then_ignore(just(")"))
 }
 
-fn function_statement<'a>() -> impl Parser<'a, &'a str, FnDef> + Clone {
+fn function_statement<'a>(
+    inner: impl Parser<'a, &'a str, Statement> + Clone,
+) -> impl Parser<'a, &'a str, FnDef> + Clone {
     type FnParseResult = (
         ((Option<Vec<String>>, Vec<(String, VarType)>), VarType),
         Statement,
@@ -416,7 +424,7 @@ fn function_statement<'a>() -> impl Parser<'a, &'a str, FnDef> + Clone {
         .then(function_parameters().repeated().collect::<Vec<_>>())
         .then_ignore(just("]"))
         .then(var_type())
-        .then(statement())
+        .then(inner)
         .then_ignore(just(")"))
         .map(
             |(((generic_types, params), return_type), statement): FnParseResult| -> FnDef {

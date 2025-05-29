@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::ast::{DefVar, Literal, Statement, TopLevelDef, TopLevelStatement, VarType};
+    use crate::ast::{DefVar, FnDef, Literal, Statement, TopLevelDef, TopLevelStatement, VarType};
     use crate::parser::{parser, statement};
     use chumsky::Parser;
 
@@ -375,6 +375,34 @@ mod tests {
                     Box::new(Statement::Ident("a".to_string()))
                 )),
             )
+        );
+    }
+
+    #[test]
+    fn test_fn_literal() {
+        let input = "(fn [(:a i32) (:b f64)] i32 (if (< a b) a b))";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::Literal(Literal::Fn(Box::new(FnDef {
+                generic_types: None,
+                parameters: vec![
+                    ("a".to_string(), VarType::Int32),
+                    ("b".to_string(), VarType::Float64)
+                ],
+                return_type: VarType::Int32,
+                statement: Statement::IfElse(
+                    Box::new(Statement::Call(
+                        "<".to_string(),
+                        vec![
+                            Statement::Ident("a".to_string()),
+                            Statement::Ident("b".to_string())
+                        ]
+                    )),
+                    Box::new(Statement::Ident("a".to_string())),
+                    Box::new(Statement::Ident("b".to_string()))
+                )
+            })))
         );
     }
 }

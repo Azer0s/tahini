@@ -95,6 +95,7 @@ pub enum Literal {
     Tuple(Vec<Statement>),
     Data(String, Vec<Statement>),
     Array(Vec<Statement>),
+    Fn(Box<FnDef>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
