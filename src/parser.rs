@@ -56,7 +56,30 @@ pub fn literal<'a>() -> impl Parser<'a, &'a str, Literal> + Clone {
         .then_ignore(just("\""))
         .map(|s: String| Literal::String(s));
 
-    float.or(int).or(bool).or(atom).or(char).or(string)
+    choice((float, int, bool, atom, char, string))
+}
+
+pub fn literal_with_statement<'a>(
+    inner: impl Parser<'a, &'a str, Statement> + Clone,
+) -> impl Parser<'a, &'a str, Literal> + Clone {
+    let tuple = just("{")
+        .ignore_then(inner.clone().repeated().at_least(1).collect::<Vec<_>>())
+        .then_ignore(just("}"))
+        .map(Literal::Tuple);
+
+    let data = just("[")
+        .ignore_then(just(":").padded())
+        .ignore_then(ident().padded())
+        .then(inner.clone().repeated().collect::<Vec<_>>())
+        .then_ignore(just("]"))
+        .map(|(name, fields): (String, Vec<Statement>)| Literal::Data(name, fields));
+
+    let array = just("[")
+        .ignore_then(inner.clone().repeated().collect::<Vec<_>>())
+        .then_ignore(just("]"))
+        .map(Literal::Array);
+
+    choice((literal(), tuple, data, array))
 }
 
 fn generics<'a>() -> impl Parser<'a, &'a str, Vec<String>> + Clone {
@@ -485,7 +508,7 @@ pub fn statement<'a>() -> impl Parser<'a, &'a str, Statement> + Clone {
             def,
             call,
             ident().map(Statement::Ident),
-            literal().map(Statement::Literal),
+            literal_with_statement(statement_rec).map(Statement::Literal),
         ))
         .padded()
     })

@@ -85,6 +85,9 @@ pub enum Literal {
     Char(char),
     String(String),
     Atom(String),
+    Tuple(Vec<Statement>),
+    Data(String, Vec<Statement>),
+    Array(Vec<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

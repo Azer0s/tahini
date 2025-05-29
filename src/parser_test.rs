@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::ast::{DefVar, Literal, Statement, TopLevelDef, TopLevelStatement, VarType};
-    use crate::parser::parser;
+    use crate::parser::{parser, statement};
     use chumsky::Parser;
 
     #[test]
@@ -244,5 +244,46 @@ mod tests {
         }
 
         assert_eq!(result[1], TopLevelStatement::ExportAll());
+    }
+
+    #[test]
+    fn test_parse_tuple_literal() {
+        let input = "{1 2 3}";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::Literal(Literal::Tuple(vec![
+                Statement::Literal(Literal::Int(1)),
+                Statement::Literal(Literal::Int(2)),
+                Statement::Literal(Literal::Int(3))
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_parse_data_literal() {
+        let input = "[:some 10]";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::Literal(Literal::Data(
+                "some".to_string(),
+                vec![Statement::Literal(Literal::Int(10))]
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_array_literal() {
+        let input = "[1 2 3]";
+        let result = statement().parse(input).into_output().unwrap();
+        assert_eq!(
+            result,
+            Statement::Literal(Literal::Array(vec![
+                Statement::Literal(Literal::Int(1)),
+                Statement::Literal(Literal::Int(2)),
+                Statement::Literal(Literal::Int(3))
+            ]))
+        );
     }
 }
