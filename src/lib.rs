@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod parser;
+pub mod transformer;
 
 #[cfg(test)]
 mod parser_literal_test;
